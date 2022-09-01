@@ -60,7 +60,7 @@ make_csv(){
 }
 
 launch_prophasm(){
-  if [[ $2 == "counts" ]];
+  if [[ $2 == "--counts" ]];
   then
       error "can't use prophasm with count!"
   fi
@@ -131,7 +131,7 @@ launch_ust(){
   (
   cd ust
   infile="../${1}.fasta"
-  outfile="${1}.ust.k${1}."
+  outfile="${1}.ust${counts_desc}.k${1}."
   ust
   )
 }
