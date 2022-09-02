@@ -114,25 +114,28 @@ launch_bcalm(){
 }
 
 launch_ust(){
-  counts_param= # null string!
+  counts_param="0"
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
-    counts_param="-all-abundance-counts"
+    counts_param="1"
     counts_desc="-counts"
   fi
 
-  bcalm_file="${1}.bca.k${K}.unitigs.fa"
+  bcalm_file="bcalm/${1}.bca${counts_desc}.k${K}.unitigs.fa"
   if [[ ! -e "${bcalm_file}" ]]; then
-    error "${bcalm_file} needed."
+    error "${bcalm_file} needed!"
   fi
 
   echo "*** Launching UST${counts_desc} with accession ${1} and k=${K}"
   mkdir -p ust
   (
   cd ust
-  infile="../${1}.fasta"
-  outfile="${1}.ust${counts_desc}.k${1}."
-  ust
+  infile="../${bcalm_file}"
+  outfile="${bcalm_file}.ust.fa"
+  outfile_counts="${bcalm_file}.ust.counts" # TODO compress count file!
+  ust -k "${K}" -i "${infile}" -a ${counts_param}
+  make_csv "${outfile}"
+  compress_and_write_csv "${outfile}"
   )
 }
 
@@ -167,8 +170,9 @@ download_and_launch(){
     for K in $KMER_SIZES; do
       #launch_prophasm "$S"
       #launch_bcalm "$S"
-      launch_bcalm "$S" "--counts"
-      #launch_ust "$S"
+      #launch_bcalm "$S" "--counts"
+      launch_ust "$S"
+      launch_ust "$S" "--counts"
       #launch_metagraph "$S"
     done
     )
