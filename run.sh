@@ -123,6 +123,9 @@ launch_metagraph(){
   infile="../${1}.fasta"
   outfile="${1}.met.k${K}.dbg"
   metagraph build --parallel ${NTHREAD} -k "${K}" ${counts_param} -o "${outfile}" # TODO annotations! rowdiff and bwrt transform
+
+  write_to_csv "${outfile}"
+  compress_all_and_write_csv "${outfile}"
   )
 }
 
