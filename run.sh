@@ -49,10 +49,16 @@ function error(){
 }
 
 compress_and_write_csv(){
+  # $1: file to compress
+  # $2: compression method
   echo -n "** Compressing ${1} with "
   case ${2} in
   "mfcompress")
     echo "MFCompressC..."
+    if [[ $(head -c 1 "${1}") != ">" ]]; then
+      echo "Not a FASTA file. Ignored."
+      return
+    fi
     outfile="${1}.mfc"
     MFCompressC -t $NTHREAD -3 -o "${outfile}" "${1}"
     ;;
@@ -98,18 +104,25 @@ launch_prophasm(){
   outfile_stat="${1}.pro.k${K}.stat"
   prophasm -s "${outfile_stat}" -k "${K}" -i "${infile}" -o "${outfile}"
   write_to_csv "${outfile}"
-  compress_and_write_csv "${outfile}"
+  compress_all_and_write_csv "${outfile}"
   )
 }
 
 launch_metagraph(){
-  echo "*** Launching metagraph with accession ${1} and k=${K}"
+  counts_param= # null string!
+  counts_desc="" # empty string!
+  if [[ $2 == "--counts" ]]; then
+    counts_param="--count-kmers"
+    counts_desc="-counts"
+  fi
+
+  echo "*** Launching metagraph${counts_desc} with accession ${1} and k=${K}"
   mkdir -p metagraph
   (
-  cd metagraph
+  cd metagraph || error "can't cd to metagraph"
   infile="../${1}.fasta"
-  outfile="${1}.met.k${K}.fasta"
-  metagraph
+  outfile="${1}.met.k${K}.dbg"
+  metagraph build --parallel ${NTHREAD} -k "${K}" ${counts_param} -o "${outfile}" # TODO annotations! rowdiff and bwrt transform
   )
 }
 
@@ -133,7 +146,7 @@ launch_bcalm(){
   -in "${infile}" -out "${outfile_base}"
 
   write_to_csv "${outfile_base}${outfile_extension}"
-  compress_and_write_csv "${outfile_base}${outfile_extension}"
+  compress_all_and_write_csv "${outfile_base}${outfile_extension}"
   )
 }
 
@@ -155,10 +168,19 @@ launch_ust(){
   outfile="${bcalm_file}.ust.fa"
   outfile_counts="${bcalm_file}.ust.counts"
   ust -k "${K}" -i "${infile}" -a ${counts_param}
+
+  # give better names to output files
+  outfile1="${1}.ust${counts_desc}.k${K}.fasta"
+  outfile1_counts="${1}.ust-counts.k${K}.counts"
+  mv "$outfile" "$outfile1"
+  outfile=$outfile1
+  [[ ${counts_param} == "0" ]] || mv "$outfile_counts" "$outfile1_counts"
+  outfile_counts=$outfile1_counts
+
   write_to_csv "${outfile}"
   [[ ${counts_param} == "0" ]] || write_to_csv "${outfile_counts}"
-  compress_and_write_csv "${outfile}"
-  [[ ${counts_param} == "0" ]] || compress_and_write_csv "${outfile_counts}"
+  compress_all_and_write_csv "${outfile}"
+  [[ ${counts_param} == "0" ]] || compress_all_and_write_csv "${outfile_counts}"
   )
 }
 
@@ -172,7 +194,7 @@ download_and_launch(){
       prefetch --progress "$S"
     fi
     (
-    cd "$S"
+    cd "$S" || error "can't cd to ${S}"
     echo -n "*** Converting $S to FASTA format..."
     if [ -f "$S.fasta" ]; then
       echo "Skipped."
@@ -195,8 +217,8 @@ download_and_launch(){
       #launch_bcalm "$S"
       #launch_bcalm "$S" "--counts"
       #launch_ust "$S"
-      launch_ust "$S" "--counts"
-      #launch_metagraph "$S"
+      #launch_ust "$S" "--counts"
+      launch_metagraph "$S"
     done
     )
   done
