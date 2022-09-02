@@ -33,7 +33,7 @@ function setup(){
   KMER_SIZES="31"
 
   # Accessions list(s)
-  SEQUENCES=$(cat sequences-*.txt | grep -vE "#") # escape comments
+  SEQUENCES=$(cat sequences*.txt | grep -vE "#") # escape comments
   if [[ -z ${SEQUENCES} ]]; then
     error "there are no sequence!"
   fi

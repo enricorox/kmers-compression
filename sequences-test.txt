@@ -1,0 +1,4 @@
+# test sequence accessions
+# Human genome (too heavy)
+# SRR341725
+SRR000001
