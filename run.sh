@@ -29,7 +29,7 @@ function setup(){
   # numbers of threads
   NTHREAD=4
 
-  # k-mer size
+  # k-mer size (separated by spaces)
   KMER_SIZES="31"
 
   # Accessions list(s)
@@ -39,8 +39,8 @@ function setup(){
   fi
 
   # result file
-  touch results.txt
-  RESULTS=$(realpath results.txt)
+  touch results.csv
+  RESULTS=$(realpath results.csv)
 }
 
 function error(){
@@ -49,12 +49,36 @@ function error(){
 }
 
 compress_and_write_csv(){
-  echo "** Compressing ${1}..."
-  MFCompressC -t $NTHREAD -3 -o "${1}.mfc" "${1}"
-  make_csv "${1}.mfc"
+  echo -n "** Compressing ${1} with "
+  case ${2} in
+  "mfcompress")
+    echo "MFCompressC..."
+    outfile="${1}.mfc"
+    MFCompressC -t $NTHREAD -3 -o "${outfile}" "${1}"
+    ;;
+  "lzma")
+    echo "lzma..."
+    outfile="${1}.lzma"
+    lzma --force --best --keep "${1}"
+    ;;
+  *)
+    echo "gzip..."
+    outfile="${1}.gz"
+    gzip --force --keep --best "${1}"
+    ;;
+  esac
+
+  write_to_csv "${outfile}"
 }
 
-make_csv(){
+compress_all_and_write_csv(){
+  tools="mfcompress lzma gzip"
+  for t in $tools; do
+    compress_and_write_csv "${1}" "${t}"
+  done
+}
+
+write_to_csv(){
   size=$(stat -c %s "${1}")
   printf "%s,%s\n" "${1}" "${size}" >> "$RESULTS"
 }
@@ -68,13 +92,13 @@ launch_prophasm(){
   echo "*** Launching prophasm with accession ${1} and k=${K}"
   mkdir -p "prophasm"
   (
-  cd prophasm
+  cd prophasm || error "cannot cd prophasm"
   infile="../${1}.fasta"
   outfile="${1}.pro.k${K}.fasta"
   outfile_stat="${1}.pro.k${K}.stat"
-  prophasm -s ${outfile_stat} -k ${K} -i ${infile} -o ${outfile}
-  make_csv ${outfile}
-  compress_and_write_csv ${outfile}
+  prophasm -s "${outfile_stat}" -k "${K}" -i "${infile}" -o "${outfile}"
+  write_to_csv "${outfile}"
+  compress_and_write_csv "${outfile}"
   )
 }
 
@@ -99,16 +123,16 @@ launch_bcalm(){
   echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
   mkdir -p bcalm
   (
-  cd bcalm
+  cd bcalm || error "cannot cd to bcalm"
   infile="../${1}.fasta"
   outfile_base="${1}.bca${counts_desc}.k${K}"
   outfile_extension=".unitigs.fa"
 
   bcalm -nb-cores ${NTHREAD} \
-  -kmer-size $K ${counts_param}\
-  -in ${infile} -out ${outfile_base}
+  -kmer-size "${K}" ${counts_param}\
+  -in "${infile}" -out "${outfile_base}"
 
-  make_csv "${outfile_base}${outfile_extension}"
+  write_to_csv "${outfile_base}${outfile_extension}"
   compress_and_write_csv "${outfile_base}${outfile_extension}"
   )
 }
@@ -121,28 +145,27 @@ launch_ust(){
     counts_desc="-counts"
   fi
 
-  bcalm_file="bcalm/${1}.bca${counts_desc}.k${K}.unitigs.fa"
-  if [[ ! -e "${bcalm_file}" ]]; then
-    error "${bcalm_file} needed!"
-  fi
+  bcalm_file="${1}.bca${counts_desc}.k${K}.unitigs.fa"
 
   echo "*** Launching UST${counts_desc} with accession ${1} and k=${K}"
   mkdir -p ust
   (
-  cd ust
-  infile="../${bcalm_file}"
+  cd ust || error "cannot cd to ust"
+  infile="../bcalm/${bcalm_file}"
   outfile="${bcalm_file}.ust.fa"
-  outfile_counts="${bcalm_file}.ust.counts" # TODO compress count file!
+  outfile_counts="${bcalm_file}.ust.counts"
   ust -k "${K}" -i "${infile}" -a ${counts_param}
-  make_csv "${outfile}"
+  write_to_csv "${outfile}"
+  [[ ${counts_param} == "0" ]] || write_to_csv "${outfile_counts}"
   compress_and_write_csv "${outfile}"
+  [[ ${counts_param} == "0" ]] || compress_and_write_csv "${outfile_counts}"
   )
 }
 
 download_and_launch(){
   for S in ${SEQUENCES}; do
     echo -n "*** Downloading $S..."
-    if [ -f "$S/$S.fasta" ]; then
+    if [ -f "$S/$S.sra" ]; then
       echo "Skipped."
     else
       echo
@@ -171,7 +194,7 @@ download_and_launch(){
       #launch_prophasm "$S"
       #launch_bcalm "$S"
       #launch_bcalm "$S" "--counts"
-      launch_ust "$S"
+      #launch_ust "$S"
       launch_ust "$S" "--counts"
       #launch_metagraph "$S"
     done
