@@ -33,7 +33,7 @@ function setup(){
   KMER_SIZES="31"
 
   # Accessions list(s)
-  SEQUENCES=$(cat sequences*.txt | grep -vE "#") # escape comments
+  SEQUENCES=$(grep -vE "#" sequences*.txt) # escape comments
   if [[ -z ${SEQUENCES} ]]; then
     error "there are no sequence!"
   fi
@@ -55,10 +55,12 @@ compress_and_write_csv(){
   case ${2} in
   "mfcompress")
     echo "MFCompressC..."
-    if [[ $(head -c 1 "${1}") != ">" ]]; then
+    local first_char=
+    if [[ $(mimetype -b "${1}") != "text/plain" || $(head -c 1 -z "${1}") != ">" ]]; then
       echo "Not a FASTA file. Ignored."
       return
     fi
+
     outfile="${1}.mfc"
     MFCompressC -t $NTHREAD -3 -o "${outfile}" "${1}"
     ;;
@@ -74,7 +76,15 @@ compress_and_write_csv(){
     ;;
   esac
 
-  write_to_csv "${outfile}"
+  write_to_csv "${outfile}" "${2:-"gzip"}"
+}
+
+write_to_csv(){
+  local size=$(stat -c %s "${1}")
+  #printf "%s,%s\n" "${1}" "${size}" >> "$RESULTS"
+  compression=${2:-"none"}
+  #echo "accession,k-mer length,method,counts,gzip,mfcompress,lzma"
+  printf "%s,%s,%s,%s,%s,%s,%s\n" "${1}" "$S" "$K" "$method" "$counts" "$compression" "$size" >> "$RESULTS"
 }
 
 compress_all_and_write_csv(){
@@ -84,12 +94,8 @@ compress_all_and_write_csv(){
   done
 }
 
-write_to_csv(){
-  size=$(stat -c %s "${1}")
-  printf "%s,%s\n" "${1}" "${size}" >> "$RESULTS"
-}
-
 launch_prophasm(){
+  method="prophasm"; counts="no"
   if [[ $2 == "--counts" ]];
   then
       error "can't use prophasm with count!"
@@ -109,11 +115,13 @@ launch_prophasm(){
 }
 
 launch_metagraph(){
+  method="metagraph"; counts="no"
   counts_param= # null string!
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
     counts_param="--count-kmers"
     counts_desc="-counts"
+    counts="yes"
   fi
 
   echo "*** Launching metagraph${counts_desc} with accession ${1} and k=${K}"
@@ -122,7 +130,7 @@ launch_metagraph(){
   cd metagraph || error "can't cd to metagraph"
   infile="../${1}.fasta"
   outfile="${1}.met.k${K}.dbg"
-  metagraph build --parallel ${NTHREAD} -k "${K}" ${counts_param} -o "${outfile}" # TODO annotations! rowdiff and bwrt transform
+  metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" ${counts_param} -o "${outfile}" "${infile}" # TODO annotations! rowdiff and bwrt transform
 
   write_to_csv "${outfile}"
   compress_all_and_write_csv "${outfile}"
@@ -130,11 +138,13 @@ launch_metagraph(){
 }
 
 launch_bcalm(){
+  method="bcalm"; counts="no"
   counts_param= # null string!
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
     counts_param="-all-abundance-counts"
     counts_desc="-counts"
+    counts="yes"
   fi
   echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
   mkdir -p bcalm
@@ -143,22 +153,25 @@ launch_bcalm(){
   infile="../${1}.fasta"
   outfile_base="${1}.bca${counts_desc}.k${K}"
   outfile_extension=".unitigs.fa"
+  outfile="${outfile_base}${outfile_extension}"
 
   bcalm -nb-cores ${NTHREAD} \
   -kmer-size "${K}" ${counts_param}\
   -in "${infile}" -out "${outfile_base}"
 
-  write_to_csv "${outfile_base}${outfile_extension}"
-  compress_all_and_write_csv "${outfile_base}${outfile_extension}"
+  write_to_csv "${outfile}"
+  compress_all_and_write_csv "${outfile}"
   )
 }
 
 launch_ust(){
+  method="ust"; counts="no"
   counts_param="0"
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
     counts_param="1"
     counts_desc="-counts"
+    counts="yes"
   fi
 
   bcalm_file="${1}.bca${counts_desc}.k${K}.unitigs.fa"
@@ -214,14 +227,20 @@ download_and_launch(){
       mv "${S}_1.fasta" "${S}.fasta"
     fi
 
+    #S="../${S}"
     # iterating k-mer size
     for K in $KMER_SIZES; do
+      #mkdir -p $K
+      (
+      #cd $K || error "can't cd to $K"
       #launch_prophasm "$S"
       #launch_bcalm "$S"
       #launch_bcalm "$S" "--counts"
       #launch_ust "$S"
       #launch_ust "$S" "--counts"
-      launch_metagraph "$S"
+      #launch_metagraph "$S"
+      launch_metagraph "$S" "--counts"
+      )
     done
     )
   done
