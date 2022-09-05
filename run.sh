@@ -95,7 +95,7 @@ compress_all_and_write_csv(){
 }
 
 launch_prophasm(){
-  method="prophasm"; counts="no"
+  method="prophasm"; counts="no-counts"
   if [[ $2 == "--counts" ]];
   then
       error "can't use prophasm with count!"
@@ -115,13 +115,12 @@ launch_prophasm(){
 }
 
 launch_metagraph(){
-  method="metagraph"; counts="no"
+  method="metagraph"; counts="no-counts"
   counts_param= # null string!
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
-    counts_param="--count-kmers"
     counts_desc="-counts"
-    counts="yes"
+    counts="counts"
   fi
 
   echo "*** Launching metagraph${counts_desc} with accession ${1} and k=${K}"
@@ -129,22 +128,60 @@ launch_metagraph(){
   (
   cd metagraph || error "can't cd to metagraph"
   infile="../${1}.fasta"
-  outfile="${1}.met.k${K}.dbg"
-  metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" ${counts_param} -o "${outfile}" "${infile}" # TODO annotations! rowdiff and bwrt transform
+  outfile_base="${S}.met.k${K}"
+  graph="${outfile_base}.dbg"
+  annotations_binary="${outfile_base}.column.annodbg"
+  annotations_coord="${outfile_base}.column.annodbg.coords"
 
-  write_to_csv "${outfile}"
-  compress_all_and_write_csv "${outfile}"
+  # clean all
+  #rm "$annotations_coord" "$annotations_binary"
+
+  # use count_dbg commands (with coordinates, not counts!)
+  [[ -f "$graph" ]] || metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" -o "${graph}" "${infile}"
+
+  if [[ $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_coord ]]; then
+    # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
+    metagraph annotate --anno-filename --coordinates\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${infile}"
+
+    # transform coordinates into column_coord
+    metagraph transform_anno --anno-type column_coord --coordinates \
+    --parallel "${NTHREAD}" --outfile-base "${outfile_base}" "${annotations_binary}"
+
+    # transform coordinates into row_diff (3 stages)
+    for i in {0,1,2}; do
+      metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage "$i"\
+      --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+    done
+
+    # transform coordinates into row_diff_coord
+    metagraph transform_anno --anno-type row_diff_coord\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+
+    # transform coordinates into row_diff_brwt_coord
+    metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --subsample 1000000\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+  fi
+  write_to_csv "${graph}"
+  compress_all_and_write_csv "${graph}"
+
+  if [[ $2 == "--counts" ]]; then
+    write_to_csv "${annotations_binary}"
+    write_to_csv "${annotations_coord}"
+    compress_all_and_write_csv "${annotations_binary}"
+    compress_all_and_write_csv "${annotations_coord}"
+  fi
   )
 }
 
 launch_bcalm(){
-  method="bcalm"; counts="no"
+  method="bcalm"; counts="no-counts"
   counts_param= # null string!
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
     counts_param="-all-abundance-counts"
     counts_desc="-counts"
-    counts="yes"
+    counts="counts"
   fi
   echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
   mkdir -p bcalm
@@ -165,13 +202,13 @@ launch_bcalm(){
 }
 
 launch_ust(){
-  method="ust"; counts="no"
+  method="ust"; counts="no-counts"
   counts_param="0"
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
     counts_param="1"
     counts_desc="-counts"
-    counts="yes"
+    counts="counts"
   fi
 
   bcalm_file="${1}.bca${counts_desc}.k${K}.unitigs.fa"
