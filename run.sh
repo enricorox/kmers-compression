@@ -162,6 +162,12 @@ launch_metagraph(){
     metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --subsample 1000000\
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
   fi
+
+  # clean
+  for file in "${outfile_base}"*; do
+    [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] || rm "$file"
+  done
+
   write_to_csv "${graph}"
   compress_all_and_write_csv "${graph}"
 
@@ -270,12 +276,12 @@ download_and_launch(){
       #mkdir -p $K
       (
       #cd $K || error "can't cd to $K"
-      #launch_prophasm "$S"
-      #launch_bcalm "$S"
-      #launch_bcalm "$S" "--counts"
-      #launch_ust "$S"
-      #launch_ust "$S" "--counts"
-      #launch_metagraph "$S"
+      launch_prophasm "$S"
+      launch_bcalm "$S"
+      launch_bcalm "$S" "--counts"
+      launch_ust "$S"
+      launch_ust "$S" "--counts"
+      launch_metagraph "$S"
       launch_metagraph "$S" "--counts"
       )
     done
