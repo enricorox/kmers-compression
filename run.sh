@@ -55,24 +55,23 @@ compress_and_write_csv(){
   case ${2} in
   "mfcompress")
     echo "MFCompressC..."
-    local first_char=
     if [[ $(mimetype -b "${1}") != "text/plain" || $(head -c 1 -z "${1}") != ">" ]]; then
       echo "Not a FASTA file. Ignored."
       return
     fi
 
     outfile="${1}.mfc"
-    MFCompressC -t $NTHREAD -3 -o "${outfile}" "${1}"
+    [[ -f $outfile ]] || MFCompressC -t $NTHREAD -3 -o "${outfile}" "${1}"
     ;;
   "lzma")
     echo "lzma..."
     outfile="${1}.lzma"
-    lzma --force --best --keep "${1}"
+    [[ -f $outfile ]] || lzma --force --best --keep "${1}"
     ;;
   *)
     echo "gzip..."
     outfile="${1}.gz"
-    gzip --force --keep --best "${1}"
+    [[ -f $outfile ]] || gzip --force --keep --best "${1}"
     ;;
   esac
 
@@ -108,7 +107,7 @@ launch_prophasm(){
   infile="../${1}.fasta"
   outfile="${1}.pro.k${K}.fasta"
   outfile_stat="${1}.pro.k${K}.stat"
-  prophasm -s "${outfile_stat}" -k "${K}" -i "${infile}" -o "${outfile}"
+  [[ -f $outfile ]] || prophasm -s "${outfile_stat}" -k "${K}" -i "${infile}" -o "${outfile}"
   write_to_csv "${outfile}"
   compress_all_and_write_csv "${outfile}"
   )
@@ -133,11 +132,12 @@ launch_metagraph(){
   annotations_binary="${outfile_base}.column.annodbg"
   annotations_coord="${outfile_base}.column.annodbg.coords"
 
-  # clean all
-  #rm "$annotations_coord" "$annotations_binary"
-
   # use count_dbg commands (with coordinates, not counts!)
-  [[ -f "$graph" ]] || metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" -o "${graph}" "${infile}"
+  if [[ ! -f "$graph" ]]; then
+    metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" -o "${graph}" "${infile}"
+  else
+    echo "Skipped."
+  fi
 
   if [[ $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_coord ]]; then
     # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
@@ -161,11 +161,14 @@ launch_metagraph(){
     # transform coordinates into row_diff_brwt_coord
     metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --subsample 1000000\
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+  else
+    echo "Skipped."
   fi
 
-  # clean
+  # clean temp files
   for file in "${outfile_base}"*; do
-    [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] || rm "$file"
+    [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
+    [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
   done
 
   write_to_csv "${graph}"
@@ -198,7 +201,7 @@ launch_bcalm(){
   outfile_extension=".unitigs.fa"
   outfile="${outfile_base}${outfile_extension}"
 
-  bcalm -nb-cores ${NTHREAD} \
+  [[ -f $outfile ]] || bcalm -nb-cores ${NTHREAD} \
   -kmer-size "${K}" ${counts_param}\
   -in "${infile}" -out "${outfile_base}"
 
@@ -226,14 +229,14 @@ launch_ust(){
   infile="../bcalm/${bcalm_file}"
   outfile="${bcalm_file}.ust.fa"
   outfile_counts="${bcalm_file}.ust.counts"
-  ust -k "${K}" -i "${infile}" -a ${counts_param}
+  outfile1="${1}.ust${counts_desc}.k${K}.fasta" # better name
+  outfile1_counts="${1}.ust-counts.k${K}.counts"
+  [[ -f $outfile1 ]] || ust -k "${K}" -i "${infile}" -a ${counts_param}
 
   # give better names to output files
-  outfile1="${1}.ust${counts_desc}.k${K}.fasta"
-  outfile1_counts="${1}.ust-counts.k${K}.counts"
   mv "$outfile" "$outfile1"
-  outfile=$outfile1
   [[ ${counts_param} == "0" ]] || mv "$outfile_counts" "$outfile1_counts"
+  outfile=$outfile1
   outfile_counts=$outfile1_counts
 
   write_to_csv "${outfile}"
@@ -276,12 +279,12 @@ download_and_launch(){
       #mkdir -p $K
       (
       #cd $K || error "can't cd to $K"
-      launch_prophasm "$S"
-      launch_bcalm "$S"
-      launch_bcalm "$S" "--counts"
-      launch_ust "$S"
-      launch_ust "$S" "--counts"
-      launch_metagraph "$S"
+      #launch_prophasm "$S"
+      #launch_bcalm "$S"
+      #launch_bcalm "$S" "--counts"
+      #launch_ust "$S"
+      #launch_ust "$S" "--counts"
+      #launch_metagraph "$S"
       launch_metagraph "$S" "--counts"
       )
     done
