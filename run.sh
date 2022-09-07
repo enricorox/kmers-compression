@@ -30,7 +30,7 @@ setup(){
   NTHREAD=4
 
   # k-mer size (separated by spaces)
-  KMER_SIZES="31"
+  KMER_SIZES=$(grep -vE "#" kmer-sizes.txt)
 
   # Accessions list(s)
   SEQUENCES=$(grep -vE "#" sequences*.txt) # escape comments
@@ -45,7 +45,7 @@ setup(){
   RESULTS=$(realpath "$RESULTS")
 
   # print headers
-  printf "sequence,method,counts,kmer-size,file-type,compression,size\n" >> "${RESULTS}"
+  printf "sequence,method,counts,kmer_size,file_type,compression,size\n" >> "${RESULTS}"
 }
 
 function error(){
@@ -257,7 +257,7 @@ launch_ust(){
 }
 
 launch_metagraph_assemble(){
-  method="assem"; counts="no-counts"
+  method="assembly"; counts="no-counts"
   if [[ $2 == "--counts" ]]; then
    error "can't use counts!"
   fi
@@ -330,4 +330,5 @@ download_and_launch(){
 
 setup
 download_and_launch
+./plot.py "$RESULTS"
 exit 0
