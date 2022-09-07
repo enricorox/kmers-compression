@@ -1,4 +1,17 @@
-# test sequence accessions
-# Human genome (too heavy)
+# Human genome
+# too heavy: Not enough memory to process SRR341725.met.k31.column.annodbg, requires 3051.387546 MB, skipped
 # SRR341725
+# zebrafish (too heavy)
+# SRR5853087
+
 SRR000001
+
+# E. coli
+SRR21394969
+# Coronavirus 2
+SRR21394970
+# Salmonella
+SRR21284212
+# N. gonorrhea
+SRR21073883
+

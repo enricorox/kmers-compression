@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function setup(){
+setup(){
   # sra-toolkit
   PATH="$HOME/bio-bin/sratoolkit.3.0.0-ubuntu64/bin/":$PATH
   hash prefetch > /dev/null || error "prefetch not found"
@@ -39,8 +39,13 @@ function setup(){
   fi
 
   # result file
-  touch results.csv
-  RESULTS=$(realpath results.csv)
+  mkdir -p results
+  RESULTS="results/results_$(date +%F_%H.%M.%S).csv"
+  touch "$RESULTS"
+  RESULTS=$(realpath "$RESULTS")
+
+  # print headers
+  printf "sequence,method,counts,kmer-size,file-type,compression,size\n" >> "${RESULTS}"
 }
 
 function error(){
@@ -75,15 +80,16 @@ compress_and_write_csv(){
     ;;
   esac
 
-  write_to_csv "${outfile}" "${2:-"gzip"}"
+  write_to_csv "${outfile}" "${2:-"gzip"}" "${1##*.}"
 }
 
 write_to_csv(){
   local size=$(stat -c %s "${1}")
   #printf "%s,%s\n" "${1}" "${size}" >> "$RESULTS"
   compression=${2:-"none"}
-  #echo "accession,k-mer length,method,counts,gzip,mfcompress,lzma"
-  printf "%s,%s,%s,%s,%s,%s,%s\n" "${1}" "$S" "$K" "$method" "$counts" "$compression" "$size" >> "$RESULTS"
+  filetype=${3:-${1##*.}}
+  # headers: sequence,method,counts,kmer-size,file-type,compression,size
+  printf "%s,%s,%s,%s,%s,%s,%s\n" "$S" "$method" "$counts" "$K" "$filetype" "$compression" "$size" >> "$RESULTS"
 }
 
 compress_all_and_write_csv(){
@@ -161,11 +167,11 @@ launch_metagraph(){
     # transform coordinates into row_diff_brwt_coord
     metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --subsample 1000000\
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
-  else
-    echo "Skipped."
   fi
 
   # clean temp files
+  echo "Press ENTER..."
+  #read
   for file in "${outfile_base}"*; do
     [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
     [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
@@ -200,11 +206,15 @@ launch_bcalm(){
   outfile_base="${1}.bca${counts_desc}.k${K}"
   outfile_extension=".unitigs.fa"
   outfile="${outfile_base}${outfile_extension}"
-
-  [[ -f $outfile ]] || bcalm -nb-cores ${NTHREAD} \
-  -kmer-size "${K}" ${counts_param}\
-  -in "${infile}" -out "${outfile_base}"
-
+  outfile1="${outfile_base}.fasta"
+  if [[ ! -f $outfile1 ]]; then
+    bcalm -nb-cores ${NTHREAD} \
+    -kmer-size "${K}" ${counts_param}\
+    -in "${infile}" -out "${outfile_base}"
+    # give better filename
+    mv "$outfile" "$outfile1"
+  fi
+  outfile=$outfile1
   write_to_csv "${outfile}"
   compress_all_and_write_csv "${outfile}"
   )
@@ -220,7 +230,7 @@ launch_ust(){
     counts="counts"
   fi
 
-  bcalm_file="${1}.bca${counts_desc}.k${K}.unitigs.fa"
+  bcalm_file="${1}.bca${counts_desc}.k${K}.fasta"
 
   echo "*** Launching UST${counts_desc} with accession ${1} and k=${K}"
   mkdir -p ust
@@ -246,6 +256,33 @@ launch_ust(){
   )
 }
 
+launch_metagraph_assemble(){
+  method="assem"; counts="no-counts"
+  if [[ $2 == "--counts" ]]; then
+   error "can't use counts!"
+  fi
+
+  metagraph_file="${1}.met.k${K}.dbg"
+
+  echo "*** Launching metagraph assemble with accession ${1} and k=${K}"
+  mkdir -p metagraph
+  (
+  cd metagraph || error "cannot cd to metagraph"
+  infile="${metagraph_file}"
+  outfile_base="${1}.assembled"
+  outfile="${outfile_base}.fasta"
+  if [[ ! -f $outfile ]]; then
+    metagraph assemble -p ${NTHREAD} -o "$outfile_base" "$infile"
+    zless "${outfile_base}.fasta.gz" > "${outfile}"
+    # not --best
+    rm "${outfile_base}.fasta.gz"
+  fi
+
+  write_to_csv "${outfile}"
+  compress_all_and_write_csv "${outfile}"
+  )
+}
+
 download_and_launch(){
   for S in ${SEQUENCES}; do
     echo -n "*** Downloading $S..."
@@ -253,7 +290,7 @@ download_and_launch(){
       echo "Skipped."
     else
       echo
-      prefetch --progress "$S"
+      prefetch --progress "$S" || continue
     fi
     (
     cd "$S" || error "can't cd to ${S}"
@@ -269,23 +306,22 @@ download_and_launch(){
       --outfile "${S}.fasta" "${S}.sra"
 
       # keep only the first file
-      rm "${S}.fasta" "${S}_2.fasta"
-      mv "${S}_1.fasta" "${S}.fasta"
+      rm -f "${S}.fasta" "${S}_2.fasta"
+      mv -f "${S}_1.fasta" "${S}.fasta"
     fi
 
-    #S="../${S}"
     # iterating k-mer size
     for K in $KMER_SIZES; do
-      #mkdir -p $K
       (
-      #cd $K || error "can't cd to $K"
-      #launch_prophasm "$S"
-      #launch_bcalm "$S"
-      #launch_bcalm "$S" "--counts"
-      #launch_ust "$S"
-      #launch_ust "$S" "--counts"
-      #launch_metagraph "$S"
+      launch_prophasm "$S"
+      launch_bcalm "$S"
+      launch_bcalm "$S" "--counts"
+      launch_ust "$S"
+      launch_ust "$S" "--counts"
+      # produce the same results as with counts
+      launch_metagraph "$S"
       launch_metagraph "$S" "--counts"
+      launch_metagraph_assemble "$S"
       )
     done
     )
