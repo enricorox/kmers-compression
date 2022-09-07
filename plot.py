@@ -32,7 +32,7 @@ def main():
     # read csv file
     # headers: sequence,method,counts,kmer_size,file_type,compression,size
     data = pd.read_csv(infile)
-    print(data)
+
     # read sequence file
     sequences = read_from_file(sequences_file)
 
@@ -45,11 +45,7 @@ def main():
         for sequence in sequences:
             # select sequence and kmer-size
             seq_df = data.query(
-                f'sequence == "{sequence}" and counts == "no-counts"'
-            ).query(f'kmer_size == {kmer_size}')
-            print(f"{sequence},{kmer_size}")
-            print(seq_df)
-            exit()
+                f'sequence == "{sequence}" and counts == "no-counts" and kmer_size == {kmer_size}')
             # for each method find the size
             no_compression = []
             for method in methods:
