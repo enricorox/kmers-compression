@@ -56,9 +56,13 @@ def main():
             best_compression_size = []
             best_compression_tool = []
             for method in methods:
-                size = seq_df.query(f'method == "{method}" and compression != "none"')['size'].min()
-                idx = seq_df.query(f'method == "{method}" and compression != "none"')['size'].idxmin()
+                q = seq_df.query(f'method == "{method}" and compression != "none"')
+                # find the best compression size
+                size = q['size'].min()
                 best_compression_size.append(size)
+
+                # find the best compression tool
+                idx = q['size'].idxmin()
                 best_compression_tool.append(data['compression'].iloc[idx])
 
             # plot
@@ -67,7 +71,6 @@ def main():
             plt.bar(methods, no_compression)
             plt.bar(methods, best_compression_size)
             plt.savefig(f"{figures_path}/{sequence}.k{kmer_size}.png")
-
 
 
 if __name__ == "__main__":

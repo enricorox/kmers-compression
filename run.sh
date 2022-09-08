@@ -170,12 +170,10 @@ launch_metagraph(){
   fi
 
   # clean temp files
-  echo "Press ENTER..."
-  #read
-  for file in "${outfile_base}"*; do
-    [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
-    [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
-  done
+  #for file in "${outfile_base}"*; do
+  #  [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
+  #  [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
+  #done
 
   write_to_csv "${graph}"
   compress_all_and_write_csv "${graph}"
@@ -198,6 +196,11 @@ launch_bcalm(){
     counts_desc="-counts"
     counts="counts"
   fi
+  if [[ $K -le 10 ]]; then
+    bca_min_size=5
+  else
+    bca_min_size=10
+  fi
   echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
   mkdir -p bcalm
   (
@@ -209,7 +212,7 @@ launch_bcalm(){
   outfile1="${outfile_base}.fasta"
   if [[ ! -f $outfile1 ]]; then
     bcalm -nb-cores ${NTHREAD} \
-    -kmer-size "${K}" ${counts_param}\
+    -kmer-size "${K}" -minimizer-size $bca_min_size ${counts_param}\
     -in "${infile}" -out "${outfile_base}"
     # give better filename
     mv "$outfile" "$outfile1"
