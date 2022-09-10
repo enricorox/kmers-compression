@@ -273,7 +273,7 @@ launch_metagraph_assemble(){
   cd metagraph || error "cannot cd to metagraph"
   infile="${metagraph_file}"
   outfile_base="${1}.assembled"
-  outfile="${outfile_base}.fasta"
+  outfile="${outfile_base}.k${K}.fasta"
   if [[ ! -f $outfile ]]; then
     metagraph assemble -p ${NTHREAD} -o "$outfile_base" "$infile"
     zless "${outfile_base}.fasta.gz" > "${outfile}"
