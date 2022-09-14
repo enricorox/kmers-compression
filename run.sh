@@ -46,6 +46,25 @@ setup(){
 
   # print headers
   printf "sequence,method,counts,kmer_size,file_type,compression,size\n" >> "${RESULTS}"
+
+  # tex table file
+  RESULTS_TEX="results/results_$(date +%F_%H.%M.%S).tex"
+  touch "$RESULTS_TEX"
+  RESULTS_TEX=$(realpath "$RESULTS_TEX")
+  printf  "%s\n"\
+          "\\begin{center}"\
+          "\\begin{tabular}{ |c|c|c|c|c|c|c| }"\
+          "\\hline"\
+          "sequence & method & counts & kmer-size & file-type & compression & size\\\\\\"\
+          "\\hline" >> "${RESULTS_TEX}"
+}
+
+finalize(){
+  printf  "%s\n"\
+          "\\hline"\
+          "\\end{tabular}"\
+          "\\end{center}" >> "$RESULTS_TEX"
+  cp "$RESULTS" results.csv
 }
 
 function error(){
@@ -90,6 +109,7 @@ write_to_csv(){
   filetype=${3:-${1##*.}}
   # headers: sequence,method,counts,kmer-size,file-type,compression,size
   printf "%s,%s,%s,%s,%s,%s,%s\n" "$S" "$method" "$counts" "$K" "$filetype" "$compression" "$size" >> "$RESULTS"
+  printf "%s & %s & %s & %s & %s & %s & %s\\\\\\\\\n" "$S" "$method" "$counts" "$K" "$filetype" "$compression" "$size" >> "$RESULTS_TEX"
 }
 
 compress_all_and_write_csv(){
@@ -212,7 +232,7 @@ launch_bcalm(){
   outfile1="${outfile_base}.fasta"
   if [[ ! -f $outfile1 ]]; then
     bcalm -nb-cores ${NTHREAD} \
-    -kmer-size "${K}" -minimizer-size $bca_min_size ${counts_param}\
+    -kmer-size "${K}" -abundance-min 1 -minimizer-size $bca_min_size ${counts_param}\
     -in "${infile}" -out "${outfile_base}"
     # give better filename
     mv "$outfile" "$outfile1"
@@ -333,5 +353,10 @@ download_and_launch(){
 
 setup
 download_and_launch
+finalize
+
+# plot
+source venv/bin/activate
 ./plot.py "$RESULTS"
+
 exit 0
