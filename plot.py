@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DEFAULT_RESULTS = "results/results_2022-09-08_11.42.35.csv"
+DEFAULT_RESULTS = "results.csv"
 SEQUENCES_FILE = "sequences-test.txt"
 # methods: output_list
 METHODS = {"bcalm": ["fasta"], "prophasm": ["fasta"], "ust": ["fasta", "counts"],
@@ -122,8 +122,7 @@ def main():
     # read csv file
     # headers: sequence,method,counts,kmer_size,file_type,compression,size
     data = pd.read_csv(infile)
-    print(data.at[0, 'size'])
-    exit(1)
+
     # read sequence file
     sequences = read_from_file(SEQUENCES_FILE)
 
