@@ -1,31 +1,34 @@
 #!/bin/bash
 
 setup(){
+  # ---- add binaries to PATH ----
   # sra-toolkit
-  PATH="$HOME/bio-bin/sratoolkit.3.0.0-ubuntu64/bin/":$PATH
+  PATH="$HOME/bio-bin/sratoolkit.3.0.0-ubuntu64/bin":$PATH
   hash prefetch > /dev/null || error "prefetch not found"
   hash fasterq-dump > /dev/null || error "fasterq-dump not found"
 
   # MFCompressC
-  PATH="$HOME/bio-bin/MFCompress/":$PATH
+  PATH="$HOME/bio-bin/MFCompress":$PATH
   hash MFCompressC > /dev/null || error "MFCompressC not found"
 
   # prophasm
-  PATH="$HOME/bio-bin/prophasm/":$PATH
+  PATH="$HOME/bio-bin/prophasm":$PATH
   hash prophasm > /dev/null || error "prophasm not found"
 
   # metagraph
-  PATH="$HOME/bio-bin/metagraph/metagraph/build/":$PATH
+  PATH="$HOME/bio-bin/metagraph/metagraph/build":$PATH
   hash metagraph > /dev/null || error "metagraph not found"
 
   # bcalm
-  PATH="$HOME/bio-bin/bcalm/build/":$PATH
+  PATH="$HOME/bio-bin/bcalm/build":$PATH
   hash bcalm > /dev/null || error "bcalm not found"
 
   # UST
-  PATH="$HOME/bio-bin/UST/":$PATH
+  PATH="$HOME/bio-bin/UST":$PATH
   hash ust > /dev/null || error "ust not found"
+  # --------------------------------
 
+  # ---- define global variables ----
   # numbers of threads
   NTHREAD=4
 
@@ -57,17 +60,29 @@ setup(){
           "\\hline"\
           "sequence & method & counts & kmer-size & file-type & compression & size\\\\\\"\
           "\\hline" >> "${RESULTS_TEX}"
+  # --------------------------------
+}
+
+clean(){
+  for S in $SEQUENCES; do
+    (
+    cd "$S" || exit
+    rm -rf $(ls | grep -vE "${S}.fasta")
+    )
+  done
 }
 
 finalize(){
+  # finalize latex table
   printf  "%s\n"\
           "\\hline"\
           "\\end{tabular}"\
           "\\end{center}" >> "$RESULTS_TEX"
+  # copy results on root dir
   cp "$RESULTS" results.csv
 }
 
-function error(){
+error(){
   echo "An error occurred: ${1:-"unknown"}"
   exit 1
 }
@@ -104,7 +119,6 @@ compress_and_write_csv(){
 
 write_to_csv(){
   local size=$(stat -c %s "${1}")
-  #printf "%s,%s\n" "${1}" "${size}" >> "$RESULTS"
   compression=${2:-"none"}
   filetype=${3:-${1##*.}}
   # headers: sequence,method,counts,kmer-size,file-type,compression,size
@@ -120,80 +134,192 @@ compress_all_and_write_csv(){
 }
 
 launch_prophasm(){
-  method="prophasm"; counts="no-counts"
+  local method="prophasm";
+  local counts="no-counts"
   if [[ $2 == "--counts" ]];
   then
       error "can't use prophasm with count!"
   fi
 
   echo "*** Launching prophasm with accession ${1} and k=${K}"
-  mkdir -p "prophasm"
+  mkdir -p $method
   (
-  cd prophasm || error "cannot cd prophasm"
-  infile="../${1}.fasta"
-  outfile="${1}.pro.k${K}.fasta"
-  outfile_stat="${1}.pro.k${K}.stat"
+  cd $method || error "cannot cd $method"
+  local infile="../${1}.fasta"
+  local outfile="${1}.pro.k${K}.fasta"
+  local outfile_stat="${1}.pro.k${K}.stat"
   [[ -f $outfile ]] || prophasm -s "${outfile_stat}" -k "${K}" -i "${infile}" -o "${outfile}"
   write_to_csv "${outfile}"
   compress_all_and_write_csv "${outfile}"
   )
 }
 
-launch_metagraph(){
-  method="metagraph"; counts="no-counts"
-  counts_param= # null string!
-  counts_desc="" # empty string!
+launch_bcalm(){
+  local method="bcalm";
+
+  if [[ $2 == "--counts" ]]; then
+    local counts="counts"
+    local counts_param="-all-abundance-counts"
+    local counts_desc="-counts"
+  else
+    local counts="no-counts"
+    local counts_param= # null string!
+    local counts_desc="" # empty string!
+  fi
+
+  # adjust parameters if kmer-size is too low
+  if [[ $K -le 10 ]]; then
+    bca_min_size=5
+  else
+    bca_min_size=10
+  fi
+
+  echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
+  mkdir -p $method
+  (
+  cd $method || error "cannot cd to bcalm"
+  local infile="../${1}.fasta"
+  local outfile_base="${1}.bca${counts_desc}.k${K}"
+  local outfile_extension=".unitigs.fa"
+  local outfile="${outfile_base}${outfile_extension}"
+  local outfile_better_name="${outfile_base}.fasta"
+
+  if [[ ! -f $outfile_better_name ]]; then
+    bcalm -nb-cores ${NTHREAD} \
+    -kmer-size "${K}" -abundance-min 1 -minimizer-size $bca_min_size ${counts_param}\
+    -in "${infile}" -out "${outfile_base}"
+    # give better filename
+    mv "$outfile" "$outfile_better_name"
+  fi
+
+  local outfile=$outfile_better_name
+  write_to_csv "${outfile}"
+  compress_all_and_write_csv "${outfile}"
+  )
+}
+
+launch_ust(){
+  local method="ust";
+
+  if [[ $2 == "--counts" ]]; then
+    counts_param="1"
+    counts_desc="-counts"
+    counts="counts"
+  else
+    local counts_param="0"
+    local counts_desc="" # empty string!
+    local counts="no-counts"
+  fi
+
+  local bcalm_file="${1}.bca${counts_desc}.k${K}.fasta"
+
+  echo "*** Launching UST${counts_desc} with accession ${1} and k=${K}"
+  mkdir -p ust
+  (
+  cd ust || error "cannot cd to ust"
+  local infile="../bcalm/${bcalm_file}"
+  local outfile="${bcalm_file}.ust.fa"
+  local outfile_counts="${bcalm_file}.ust.counts"
+
+  # better names
+  local outfile_better_name="${1}.ust${counts_desc}.k${K}.fasta"
+  local outfile_better_name_counts="${1}.ust-counts.k${K}.counts"
+  if [[ ! -f $outfile_better_name ]]; then
+    ust -k "${K}" -i "${infile}" -a ${counts_param}
+
+    # give better names to output files
+    mv "$outfile" "$outfile_better_name"
+    [[ ${counts_param} == "0" ]] || mv "$outfile_counts" "$outfile_better_name_counts"
+  fi
+
+  local outfile=$outfile_better_name
+  local outfile_counts=$outfile_better_name_counts
+
+  write_to_csv "${outfile}"
+  [[ ${counts_param} == "0" ]] || write_to_csv "${outfile_counts}"
+  compress_all_and_write_csv "${outfile}"
+  [[ ${counts_param} == "0" ]] || compress_all_and_write_csv "${outfile_counts}"
+  )
+}
+
+launch_metagraph_coord1(){
+  local method="metagraph";
+  local counts="no-counts"
+
   if [[ $2 == "--counts" ]]; then
     counts_desc="-counts"
     counts="counts"
+  else
+    local counts_desc="" # empty string!
+    local counts_param= # null string!
   fi
 
   echo "*** Launching metagraph${counts_desc} with accession ${1} and k=${K}"
-  mkdir -p metagraph
+  local root_dir="${method}-k${K}"
+  mkdir -p "$root_dir"
   (
-  cd metagraph || error "can't cd to metagraph"
-  infile="../${1}.fasta"
-  outfile_base="${S}.met.k${K}"
-  graph="${outfile_base}.dbg"
-  annotations_binary="${outfile_base}.column.annodbg"
-  annotations_coord="${outfile_base}.column.annodbg.coords"
+  cd "$root_dir" || error "can't cd to metagraph"
+  mkdir -p swap
+  local infile="../${1}.fasta"
+  local outfile_base="${S}.met.k${K}"
+  local graph="${outfile_base}.dbg"
+  local annotations_binary="${outfile_base}.column.annodbg"
+  local annotations_coord="${outfile_base}.column.annodbg.coords"
 
   # use count_dbg commands (with coordinates, not counts!)
+  echo -n "Building DBG..."
   if [[ ! -f "$graph" ]]; then
     metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" -o "${graph}" "${infile}"
+    echo "Done."
   else
     echo "Skipped."
   fi
 
   if [[ $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_coord ]]; then
     # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
+    echo "* Building *$annotations_binary and $annotations_coord"
     metagraph annotate --anno-filename --coordinates\
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${infile}"
 
     # transform coordinates into column_coord
+    echo "* Transforming coordinates into column_coord"
     metagraph transform_anno --anno-type column_coord --coordinates \
-    --parallel "${NTHREAD}" --outfile-base "${outfile_base}" "${annotations_binary}"
+    --parallel "${NTHREAD}" -o "${outfile_base}" "${annotations_binary}"
 
     # transform coordinates into row_diff (3 stages)
-    for i in {0,1,2}; do
-      metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage "$i"\
-      --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
-    done
+    echo "* Transforming coordinates into row_diff (3 stages)"
+    echo "- stage: 0"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 0 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_count" "${annotations_binary}"
+    echo "- stage: 1"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 1 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_reduction" "${annotations_binary}"
+    echo "- stage: 2"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 2 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_diff" "${annotations_binary}"
 
     # transform coordinates into row_diff_coord
+    echo "* Transforming coordinates into row_diff_coord"
     metagraph transform_anno --anno-type row_diff_coord\
-    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}" "${annotations_binary}"
 
     # transform coordinates into row_diff_brwt_coord
-    metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --subsample 1000000\
-    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
-  fi
+    echo "* Producing brwt linkage"
+    metagraph transform_anno --anno-type row_diff_brwt_coord --greedy --fast --linkage\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.linkage" "${annotations_binary}"
 
-  # clean temp files
-  #for file in "${outfile_base}"*; do
-  #  [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
-  #  [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
-  #done
+    echo "* Transforming coordinates into row_diff_brwt_coord"
+    metagraph transform_anno --anno-type row_diff_brwt_coord --linkage-file "${outfile_base}.linkage"\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}" "${annotations_binary}"
+
+    # relax annotations
+    echo "* Relaxing annotations"
+    metagraph relax_brwt --relax-arity 32\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.row_diff_brwt_coord.annodbg"
+
+    # clean temp files
+    rm -rf swap *.pred *.pred_boundary *.rd_succ *.succ *.succ_boundary *.linkage *.row_count *.row_reduction *.anchors
+  fi
 
   write_to_csv "${graph}"
   compress_all_and_write_csv "${graph}"
@@ -207,97 +333,103 @@ launch_metagraph(){
   )
 }
 
-launch_bcalm(){
-  method="bcalm"; counts="no-counts"
+# don't use this!
+launch_metagraph_coord2(){
+  method="metagraph_coord2"; counts="no-counts"
   counts_param= # null string!
   counts_desc="" # empty string!
   if [[ $2 == "--counts" ]]; then
-    counts_param="-all-abundance-counts"
     counts_desc="-counts"
     counts="counts"
   fi
-  if [[ $K -le 10 ]]; then
-    bca_min_size=5
-  else
-    bca_min_size=10
-  fi
-  echo "*** Launching bcalm${counts_desc} with accession ${1} and k=${K}"
-  mkdir -p bcalm
+
+  echo "*** Launching metagraph${counts_desc}-coord2 with accession ${1} and k=${K}"
+  mkdir -p metagraph
   (
-  cd bcalm || error "cannot cd to bcalm"
+  cd metagraph || error "can't cd to metagraph"
   infile="../${1}.fasta"
-  outfile_base="${1}.bca${counts_desc}.k${K}"
-  outfile_extension=".unitigs.fa"
-  outfile="${outfile_base}${outfile_extension}"
-  outfile1="${outfile_base}.fasta"
-  if [[ ! -f $outfile1 ]]; then
-    bcalm -nb-cores ${NTHREAD} \
-    -kmer-size "${K}" -abundance-min 1 -minimizer-size $bca_min_size ${counts_param}\
-    -in "${infile}" -out "${outfile_base}"
-    # give better filename
-    mv "$outfile" "$outfile1"
-  fi
-  outfile=$outfile1
-  write_to_csv "${outfile}"
-  compress_all_and_write_csv "${outfile}"
-  )
-}
+  outfile_base="${S}.met-coord2.k${K}"
+  graph="${outfile_base}.dbg"
+  annotations_binary="${outfile_base}.column.annodbg"
+  annotations_reduced="${outfile_base}.row_diff_brwt.annodbg"
+  annotations_coord="${outfile_base}.column.annodbg.coords"
 
-launch_ust(){
-  method="ust"; counts="no-counts"
-  counts_param="0"
-  counts_desc="" # empty string!
+  # use count_dbg commands (with coordinates, not counts!)
+  if [[ ! -f "$graph" ]]; then
+    echo "Building DBG..."
+    metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" -o "${graph}" "${infile}"
+  else
+    echo "Skipped."
+  fi
+
+  if [[ 1 == 1 || $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_reduced ]]; then
+    # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
+    echo "Building *.column.annodbg and *.column.annodbg.coords"
+    metagraph annotate --anno-filename --coordinates\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${infile}"
+
+    # transform coordinates into row_diff (3 stages)
+    echo "Transform coordinates into row_diff (3 stages)"
+    echo "stage: 0"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 0\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}.row_count" "${annotations_binary}"
+    echo "stage: 1"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 1\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}.row_reduction" "${annotations_binary}"
+    echo "stage: 2"
+    metagraph transform_anno --anno-type row_diff --coordinates --row-diff-stage 2\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${annotations_binary}"
+
+    # transform coordinates into row_diff_bwrt
+    echo "Transforming coordinates into row_diff_bwrt"
+    metagraph transform_anno --anno-type row_diff_brwt --greedy\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.row_diff.annodbg"
+
+    # relax annotations
+    echo "Relaxing annotations"
+    metagraph relax_brwt --relax-arity 32\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.row_diff_brwt.annodbg"
+  fi
+
+  # clean temp files
+  rm *.pred *.pred_boundary *.rd_succ *.succ *.succ_boundary *.linkage *.row_count *.row_reduction *.anchors
+  #for file in "${outfile_base}"*; do
+  #  [[ $file == "$graph" || $file == "$annotations_binary" || $file == "$annotations_coord" ]] ||\
+  #  [[ $file == *.lzma || $file == *.gz || $file == *.mfc ]] || rm "$file"
+  #done
+
+  write_to_csv "${graph}"
+  compress_all_and_write_csv "${graph}"
+
   if [[ $2 == "--counts" ]]; then
-    counts_param="1"
-    counts_desc="-counts"
-    counts="counts"
+    write_to_csv "${annotations_reduced}"
+    write_to_csv "${annotations_coord}"
+    compress_all_and_write_csv "${annotations_reduced}"
+    compress_all_and_write_csv "${annotations_coord}"
   fi
-
-  bcalm_file="${1}.bca${counts_desc}.k${K}.fasta"
-
-  echo "*** Launching UST${counts_desc} with accession ${1} and k=${K}"
-  mkdir -p ust
-  (
-  cd ust || error "cannot cd to ust"
-  infile="../bcalm/${bcalm_file}"
-  outfile="${bcalm_file}.ust.fa"
-  outfile_counts="${bcalm_file}.ust.counts"
-  outfile1="${1}.ust${counts_desc}.k${K}.fasta" # better name
-  outfile1_counts="${1}.ust-counts.k${K}.counts"
-  [[ -f $outfile1 ]] || ust -k "${K}" -i "${infile}" -a ${counts_param}
-
-  # give better names to output files
-  mv "$outfile" "$outfile1"
-  [[ ${counts_param} == "0" ]] || mv "$outfile_counts" "$outfile1_counts"
-  outfile=$outfile1
-  outfile_counts=$outfile1_counts
-
-  write_to_csv "${outfile}"
-  [[ ${counts_param} == "0" ]] || write_to_csv "${outfile_counts}"
-  compress_all_and_write_csv "${outfile}"
-  [[ ${counts_param} == "0" ]] || compress_all_and_write_csv "${outfile_counts}"
   )
 }
 
 launch_metagraph_assemble(){
-  method="assembly"; counts="no-counts"
+  local method="assembly";
+  local counts="no-counts"
   if [[ $2 == "--counts" ]]; then
    error "can't use counts!"
   fi
 
-  metagraph_file="${1}.met.k${K}.dbg"
+  local metagraph_file="../metagraph-k${K}/${1}.met.k${K}.dbg"
 
   echo "*** Launching metagraph assemble with accession ${1} and k=${K}"
-  mkdir -p metagraph
+  mkdir -p $method
   (
-  cd metagraph || error "cannot cd to metagraph"
-  infile="${metagraph_file}"
-  outfile_base="${1}.assembled"
-  outfile="${outfile_base}.k${K}.fasta"
+  cd $method || error "cannot cd to metagraph"
+  local infile="${metagraph_file}"
+  local outfile_base="${1}.assembled"
+  local outfile="${outfile_base}.k${K}.fasta"
   if [[ ! -f $outfile ]]; then
     metagraph assemble -p ${NTHREAD} -o "$outfile_base" "$infile"
+    # not --best compression, decompress!
     zless "${outfile_base}.fasta.gz" > "${outfile}"
-    # not --best
     rm "${outfile_base}.fasta.gz"
   fi
 
@@ -309,10 +441,11 @@ launch_metagraph_assemble(){
 download_and_launch(){
   for S in ${SEQUENCES}; do
     echo -n "*** Downloading $S..."
-    if [ -f "$S/$S.sra" ]; then
+    if [[ -f "$S/$S.sra" || -f "$S/$S.fasta" ]]; then
       echo "Skipped."
     else
       echo
+      # download or skip sequence if errors!
       prefetch --progress "$S" || continue
     fi
     (
@@ -335,28 +468,29 @@ download_and_launch(){
 
     # iterating k-mer size
     for K in $KMER_SIZES; do
-      (
       launch_prophasm "$S"
       launch_bcalm "$S"
       launch_bcalm "$S" "--counts"
       launch_ust "$S"
       launch_ust "$S" "--counts"
-      # produce the same results as with counts
-      launch_metagraph "$S"
-      launch_metagraph "$S" "--counts"
+      launch_metagraph_coord1 "$S"
+      launch_metagraph_coord1 "$S" "--counts"
       launch_metagraph_assemble "$S"
-      )
     done
     )
   done
 }
 
 setup
+clean
 download_and_launch
 finalize
 
 # plot
 source venv/bin/activate
 ./plot.py "$RESULTS"
+
+# power off the computer
+shutdown -h +3
 
 exit 0

@@ -49,6 +49,8 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
         all_sequences = {}
         print(f"\tkmer-size: {kmer_size}")
         avg_ratios = [0 for i in range(len(methods))]
+        avg_size = [0 for i in range(len(methods))]
+        avg_comp = [0 for i in range(len(methods))]
         for sequence in sequences:
             print(f"\t\tsequence: {sequence}")
             # select sequence and kmer-size
@@ -82,7 +84,9 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
                 # idx = q['size'].idxmin()
                 # best_compression_tool.append(data['compression'].iloc[idx])
 
-                avg_ratios[i] += (size / comp_size) / len(methods)
+                avg_ratios[i] += (size / comp_size) / len(sequences)
+                avg_size[i] += size / len(sequences)
+                avg_comp[i] += comp_size / len(sequences)
             print(f"\t\t\tuncompressed: {no_compression_size}")
             print(f"\t\t\tcompressed: {best_compression_size}")
 
@@ -99,14 +103,25 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
             # save sizes
             all_sequences.update({sequence: [no_compression_size, best_compression_size]})
 
-        # plot average rations
+        # plot average ratios
         plt.title(f"average - {counts_name} - k={kmer_size}")
         plt.xlabel("methods")
         plt.ylabel("size ratios")
         plt.bar(methods, avg_ratios)
         addlabels1(methods, avg_ratios)
+        plt.savefig(f"{FIGURES_PATH}/average-ratios.{counts_name}.k{kmer_size}.png")
+        plt.clf()
+
+        # plot avgerage (compressed) sizes
+        plt.title(f"average - {counts_name} - k={kmer_size}")
+        plt.xlabel("methods")
+        plt.ylabel("sizes [bytes]")
+        plt.bar(methods, avg_size)
+        plt.bar(methods, avg_comp)
+        addlabels2(methods, avg_size, avg_comp)
         plt.savefig(f"{FIGURES_PATH}/average.{counts_name}.k{kmer_size}.png")
         plt.clf()
+
         all_sizes.update({kmer_size: all_sequences})
     return all_sizes
 
