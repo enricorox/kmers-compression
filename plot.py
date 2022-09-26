@@ -27,8 +27,8 @@ def read_from_file(myfile):
 # function to add value labels
 def addlabels2(x, y1, y2):
     for i in range(len(x)):
-        plt.text(i, y1[i], f"{y1[i]}", ha='center', va='bottom', color='green')
-        plt.text(i, y2[i], f"{y2[i]}", ha='center', va='top', color='green')
+        plt.text(i, y1[i], f"{y1[i]*1.0:.2}", ha='center', va='bottom', color='green')
+        plt.text(i, y2[i], f"{y2[i]*1.0:.2}", ha='center', va='top', color='green')
 
 
 def addlabels1(x, y):

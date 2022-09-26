@@ -482,7 +482,7 @@ download_and_launch(){
 }
 
 setup
-clean
+# clean
 download_and_launch
 finalize
 
