@@ -247,14 +247,14 @@ launch_metagraph_coord1(){
   local counts="no-counts"
 
   if [[ $2 == "--counts" ]]; then
-    counts_desc="-counts"
-    counts="counts"
+    local counts_desc="-counts"
+    local counts="counts"
   else
     local counts_desc="" # empty string!
     local counts_param= # null string!
   fi
 
-  echo "*** Launching metagraph${counts_desc} with accession ${1} and k=${K}"
+  echo "*** Launching ${method}${counts_desc} with accession ${1} and k=${K}"
   local root_dir="${method}-k${K}"
   mkdir -p "$root_dir"
   (
@@ -277,7 +277,7 @@ launch_metagraph_coord1(){
 
   if [[ $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_coord ]]; then
     # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
-    echo "* Building *$annotations_binary and $annotations_coord"
+    echo "* Building $annotations_binary and $annotations_coord"
     metagraph annotate --anno-filename --coordinates\
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${infile}"
 
@@ -329,6 +329,87 @@ launch_metagraph_coord1(){
     write_to_csv "${annotations_coord}"
     compress_all_and_write_csv "${annotations_binary}"
     compress_all_and_write_csv "${annotations_coord}"
+  fi
+  )
+}
+
+launch_metagraph_count(){
+  local method="metagraph2";
+  local counts="no-counts"
+
+  if [[ $2 == "--counts" ]]; then
+    local counts_desc="-counts"
+    local counts="counts"
+  else
+    local counts_desc="" # empty string!
+    local counts_param= # null string!
+  fi
+
+  echo "*** Launching ${method}${counts_desc} with accession ${1} and k=${K}"
+  local root_dir="${method}-k${K}"
+  mkdir -p "$root_dir"
+  (
+  cd "$root_dir" || error "can't cd to metagraph"
+  mkdir -p swap
+  local infile="../${1}.fasta"
+  local outfile_base="${S}.met.k${K}"
+  local graph="${outfile_base}.dbg"
+  local annotations_binary="${outfile_base}.column.annodbg"
+  local annotations_counts="${outfile_base}.column.annodbg.counts"
+
+  # use count_dbg commands (with coordinates, not counts!)
+  echo -n "Building DBG..."
+  if [[ ! -f "$graph" ]]; then
+    metagraph build --parallel "${NTHREAD}" --kmer-length "${K}" --count-kmers -o "${graph}" "${infile}"
+    echo "Done."
+  else
+    echo "Skipped."
+  fi
+
+  if [[ $2 == "--counts" && ! -f $annotations_binary && ! -f $annotations_counts ]]; then
+    # dumping contigs to fasta
+    echo "* Dumping contigs to fasta"
+    metagraph clean -p ${NTHREAD} --to-fasta -o "${outfile_base}.contigs" "${graph}"
+
+    # produce .column.annodbg (binary graph annotation) and .column.annodbg.coords (kmers coordinates) files
+    echo "* Building $annotations_binary and $annotations_counts"
+    metagraph annotate --anno-filename --count-kmers\
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.contigs.fasta.gz"
+
+    # transform coordinates into row_diff (3 stages)
+    echo "* Transforming coordinates into row_diff (3 stages)"
+    echo "- stage: 0"
+    metagraph transform_anno --count-kmers --anno-type row_diff --row-diff-stage 0 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_count" "${annotations_binary}"
+    echo "- stage: 1"
+    metagraph transform_anno --count-kmers --anno-type row_diff --row-diff-stage 1 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_reduction" "${annotations_binary}"
+    echo "- stage: 2"
+    metagraph transform_anno --count-kmers --anno-type row_diff --row-diff-stage 2 --disk-swap swap\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}.row_diff" "${annotations_binary}"
+
+    # transform annotations into row_diff_int_brwt
+    echo "* Transforming coordinates into row_diff_int_brwt"
+    metagraph transform_anno --anno-type row_diff_int_brwt --greedy --fast\
+    --parallel "${NTHREAD}" --infile-base "${graph}" -o "${outfile_base}" "${annotations_binary}"
+
+    # relax annotations
+    echo "* Relaxing annotations"
+    metagraph relax_brwt \
+    --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.row_diff_int_brwt.annodbg"
+
+    # clean temp files
+    rm -rf swap *.pred *.pred_boundary *.rd_succ *.succ *.succ_boundary *.linkage *.row_count *.row_reduction *.anchors
+  fi
+
+  write_to_csv "${graph}"
+  compress_all_and_write_csv "${graph}"
+
+  if [[ $2 == "--counts" ]]; then
+    write_to_csv "${annotations_binary}"
+    write_to_csv "${annotations_counts}"
+    compress_all_and_write_csv "${annotations_binary}"
+    compress_all_and_write_csv "${annotations_counts}"
   fi
   )
 }
@@ -410,31 +491,39 @@ launch_metagraph_coord2(){
   )
 }
 
+# launch metagraph2 before this!
 launch_metagraph_assemble(){
   local method="assembly";
   local counts="no-counts"
-  if [[ $2 == "--counts" ]]; then
-   error "can't use counts!"
-  fi
 
-  local metagraph_file="../metagraph-k${K}/${1}.met.k${K}.dbg"
+
+  local metagraph_contigs="../metagraph2-k${K}/${1}.met.k${K}.contigs.fasta.gz"
+  local metagraph_counts="../metagraph2-k${K}/${1}.met.k${K}.contigs.kmer_counts.gz"
+  local outfile_base="${1}.assembled.k${K}"
+  local outfile_contigs="${outfile_base}.fasta"
+  local outfile_counts="${outfile_base}.kmer_counts"
 
   echo "*** Launching metagraph assemble with accession ${1} and k=${K}"
   mkdir -p $method
   (
   cd $method || error "cannot cd to metagraph"
-  local infile="${metagraph_file}"
-  local outfile_base="${1}.assembled"
-  local outfile="${outfile_base}.k${K}.fasta"
-  if [[ ! -f $outfile ]]; then
-    metagraph assemble -p ${NTHREAD} -o "$outfile_base" "$infile"
+
+  if [[ ! -f $outfile_contigs ]]; then
     # not --best compression, decompress!
-    zless "${outfile_base}.fasta.gz" > "${outfile}"
-    rm "${outfile_base}.fasta.gz"
+    zless "${metagraph_contigs}" > "${outfile_contigs}"
   fi
 
-  write_to_csv "${outfile}"
-  compress_all_and_write_csv "${outfile}"
+  if [[ $2 == "--counts" && ! -f $outfile_counts ]]; then
+     zless "${metagraph_counts}" > "${outfile_counts}"
+  fi
+
+  write_to_csv "${outfile_contigs}"
+  compress_all_and_write_csv "${outfile_contigs}"
+
+  if [[ $2 == "--counts" ]]; then
+    write_to_csv "${outfile_counts}"
+    compress_all_and_write_csv "${outfile_counts}"
+  fi
   )
 }
 
@@ -468,17 +557,19 @@ download_and_launch(){
 
     # iterating k-mer size
     for K in $KMER_SIZES; do
-      launch_prophasm "$S"
-      launch_bcalm "$S"
-      launch_bcalm "$S" "--counts"
-      launch_ust "$S"
-      launch_ust "$S" "--counts"
-      launch_metagraph_coord1 "$S"
-      launch_metagraph_coord1 "$S" "--counts"
-      launch_metagraph_assemble "$S"
+      #launch_metagraph_count "$S" "--counts"
+      #launch_prophasm "$S"
+      #launch_bcalm "$S"
+      #launch_bcalm "$S" "--counts"
+      #launch_ust "$S"
+      #launch_ust "$S" "--counts"
+      #launch_metagraph_coord1 "$S"
+      #launch_metagraph_coord1 "$S" "--counts"
+      launch_metagraph_assemble "$S" "--counts"
     done
     )
   done
+  exit
 }
 
 setup

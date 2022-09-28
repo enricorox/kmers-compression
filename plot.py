@@ -87,6 +87,8 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
                 avg_ratios[i] += (size / comp_size) / len(sequences)
                 avg_size[i] += size / len(sequences)
                 avg_comp[i] += comp_size / len(sequences)
+
+            # methods results
             print(f"\t\t\tuncompressed: {no_compression_size}")
             print(f"\t\t\tcompressed: {best_compression_size}")
 
