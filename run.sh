@@ -32,7 +32,10 @@ setup(){
   hash ust > /dev/null || error "ust not found"
   # --------------------------------
 
-  # ---- define global variables ----
+  # ---- define other global variables ----
+  # root dir
+  ROOT=$(realpath .)
+
   # numbers of threads
   NTHREAD=4
 
@@ -78,7 +81,7 @@ clean(){
 
 finalize(){
   # copy results on backup dir
-  cp "$RESULTS" "results/results_$(date +%F_%H.%M.%S).csv"
+  cp "$RESULTS" "${ROOT}/results/results_$(date +%F_%H.%M.%S).csv"
 }
 
 error(){
@@ -95,7 +98,7 @@ compress_and_write_csv(){
   "mfcompress")
     echo "MFCompressC..."
     # check mimetype and first character
-    if [[ $(mimetype -b "${uncompressed}") != "text/plain" || $(head -c 1 -z "${1}") != ">" ]]; then
+    if [[ $(mimetype -b "${uncompressed}") != "text/plain" || $(head -c 1 -z "${uncompressed}") != ">" ]]; then
       echo "Not a FASTA file. Ignored."
       return
     fi
@@ -108,14 +111,16 @@ compress_and_write_csv(){
     local compressed="${uncompressed}.lzma"
     [[ -f $compressed ]] || lzma --force --best --keep "${uncompressed}"
     ;;
-  *)
+  "gzip")
     echo "gzip..."
     local compressed="${uncompressed}.gz"
     [[ -f $compressed ]] || gzip --force --keep --best "${uncompressed}"
     ;;
+  *)
+    error "compressor not found"
   esac
 
-  write_to_csv "${compressed}" "${method:-"gzip"}" "${uncompressed##*.}"
+  write_to_csv "${compressed}" "${compressor:-"gzip"}" "${uncompressed##*.}"
 }
 
 write_to_csv(){
