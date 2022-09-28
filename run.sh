@@ -129,7 +129,7 @@ write_to_csv(){
   local size=$(stat -c %s "${1}")
   # compression type if given otherwise none
   local compression=${2:-"none"}
-  # filetype if given otherwisw regex
+  # filetype if given otherwise found it
   local filetype=${3:-${1##*.}}
   # recall csv headers: sequence,method,counts,kmer-size,file-type,compression,size
   printf "%s,%s,%s,%s,%s,%s,%s\n" "$S" "$method" "$counts" "$K" "$filetype" "$compression" "$size" >> "$RESULTS"
@@ -142,18 +142,22 @@ compress_all_and_write_csv(){
   done
 }
 
+write_starting_size(){
+  local method="none"
+  local counts="none"
+  local K="0"
+  local filetype="fasta"
+  local compression="none"
+  write_to_csv "${S}.fasta"
+}
+
 launch_prophasm(){
   local method="prophasm";
   local root_dir=$method
   local counts="no-counts"
-  local infile="../${1}.fasta"
-  local outfile="${1}.pro.k${K}.fasta"
-  local outfile_stat="${1}.pro.k${K}.stat"
-
-  if [[ $2 == "--counts" ]];
-  then
-      error "can't use prophasm with count!"
-  fi
+  local infile="../${S}.fasta"
+  local outfile="${S}.pro.k${K}.fasta"
+  local outfile_stat="${S}.pro.k${K}.stat"
 
   echo "*** Launching prophasm ($counts) with accession ${S} and k=${K}"
   mkdir -p $root_dir
@@ -168,7 +172,7 @@ launch_prophasm(){
 launch_bcalm(){
   local method="bcalm";
   local root_dir=$method
-  if [[ $2 == "--counts" ]]; then
+  if [[ $1 == "--counts" ]]; then
     local counts="counts"
     local counts_param="-all-abundance-counts"
   else
@@ -210,7 +214,7 @@ launch_bcalm(){
 launch_ust(){
   local method="ust";
   local root_dir=$method
-  if [[ $2 == "--counts" ]]; then
+  if [[ $1 == "--counts" ]]; then
     local counts_param="1"
     local counts="counts"
   else
@@ -258,7 +262,7 @@ launch_metagraph_count(){
   local annotations_binary="${outfile_base}.column.annodbg"
   local annotations_counts="${outfile_base}.column.annodbg.counts"
 
-  if [[ $2 == "--counts" ]]; then
+  if [[ $1 == "--counts" ]]; then
     local counts="counts"
   else
     local counts="no-counts"
@@ -334,7 +338,7 @@ launch_metagraph_assemble(){
   local outfile_contigs="${outfile_base}.fasta"
   local outfile_counts="${outfile_base}.kmer_counts"
 
-  if [[ $2 == "--counts" ]]; then
+  if [[ $1 == "--counts" ]]; then
     local counts="counts"
   else
     local counts="no-counts"
@@ -396,16 +400,19 @@ download_and_launch(){
       --outfile "${S}.fasta" "${S}.sra"
     fi
 
+    write_starting_size
+
     # iterating k-mer size
     for K in $KMER_SIZES; do
-      launch_metagraph_count "$S"
-      launch_metagraph_count "$S" "--counts"
-      #launch_prophasm "$S"
-      #launch_bcalm "$S"
-      #launch_bcalm "$S" "--counts"
-      #launch_ust "$S"
-      #launch_ust "$S" "--counts"
-      launch_metagraph_assemble "$S" "--counts"
+      launch_metagraph_count
+      launch_metagraph_count --counts
+      launch_metagraph_assemble
+      launch_metagraph_assemble --counts
+      launch_prophasm
+      launch_bcalm
+      launch_bcalm --counts
+      launch_ust
+      launch_ust --counts
     done
     )
   done
