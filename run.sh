@@ -3,6 +3,7 @@
 setup(){
   DEBUG=true
   PLOT=false
+  CLEAN=false
 
   # ---- add binaries to PATH ----
   # sra-toolkit
@@ -46,12 +47,12 @@ setup(){
 
   # result file
   mkdir -p results
-  RESULTS="results/results_$(date +%F_%H.%M.%S).csv"
+  RESULTS="results.csv"
   touch "$RESULTS"
   RESULTS=$(realpath "$RESULTS")
 
   # print headers
-  printf "sequence,method,counts,kmer_size,file_type,compression,size\n" >> "${RESULTS}"
+  printf "sequence,method,counts,kmer_size,file_type,compression,size\n" > "${RESULTS}"
 
   if $DEBUG; then
     echo "Debug mode activated"
@@ -76,8 +77,8 @@ clean(){
 }
 
 finalize(){
-  # copy results on root dir
-  cp "$RESULTS" results.csv
+  # copy results on backup dir
+  cp "$RESULTS" "results/results_$(date +%F_%H.%M.%S).csv"
 }
 
 error(){
@@ -406,7 +407,7 @@ download_and_launch(){
 }
 
 setup
-clean
+if [ $CLEAN ]; then clean; fi
 download_and_launch
 finalize
 

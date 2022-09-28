@@ -6,3 +6,4 @@ figures
 venv
 test.py
 test.sh
+results.csv
