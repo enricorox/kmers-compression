@@ -8,8 +8,8 @@ DEFAULT_RESULTS = "results.csv"
 SEQUENCES_FILE = "sequences-test.txt"
 # methods: output_list
 METHODS = {"bcalm": ["fasta"], "prophasm": ["fasta"], "ust": ["fasta", "counts"],
-           "metagraph": ["dbg", "annodbg", "coords"], "assembly": ["fasta"]}
-NO_COUNTS_METHOD = ["prophasm", "assembly"]
+           "metagraph": ["dbg", "annodbg", "coords"], "assembly": ["fasta", "kmer_counts"]}
+NO_COUNTS_METHOD = ["prophasm"]
 FIGURES_PATH = "figures"
 
 
