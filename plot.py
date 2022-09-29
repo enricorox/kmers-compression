@@ -51,12 +51,15 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
         avg_ratios = [0 for i in range(len(methods))]
         avg_size = [0 for i in range(len(methods))]
         avg_comp = [0 for i in range(len(methods))]
+        avg_seq_size = 0
         for sequence in sequences:
             print(f"\t\tsequence: {sequence}")
             # select sequence and kmer-size
             seq_df = data.query(
                 f'sequence == "{sequence}" and counts == "{counts_name}" and kmer_size == {kmer_size}'
             )
+
+            avg_seq_size += seq_df.query('method == "none"')['size'].iloc[0] / len(sequences)
 
             # for each method find
             # - the size
@@ -108,13 +111,22 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
         # plot average ratios
         plt.title(f"average - {counts_name} - k={kmer_size}")
         plt.xlabel("methods")
+        plt.ylabel("size ratios bis")
+        plt.bar(methods, avg_ratios)
+        addlabels1(methods, avg_ratios)
+        plt.savefig(f"{FIGURES_PATH}/average-ratios-bis.{counts_name}.k{kmer_size}.png")
+        plt.clf()
+
+        # plot average ratios
+        plt.title(f"average - {counts_name} - k={kmer_size}")
+        plt.xlabel("methods")
         plt.ylabel("size ratios")
         plt.bar(methods, avg_ratios)
         addlabels1(methods, avg_ratios)
         plt.savefig(f"{FIGURES_PATH}/average-ratios.{counts_name}.k{kmer_size}.png")
         plt.clf()
 
-        # plot avgerage (compressed) sizes
+        # plot average (compressed) sizes
         plt.title(f"average - {counts_name} - k={kmer_size}")
         plt.xlabel("methods")
         plt.ylabel("sizes [bytes]")

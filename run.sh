@@ -49,7 +49,6 @@ setup(){
   fi
 
   # result file
-  mkdir -p results
   RESULTS="results.csv"
   touch "$RESULTS"
   RESULTS=$(realpath "$RESULTS")
@@ -66,6 +65,7 @@ setup(){
 }
 
 clean(){
+  cd sequences || return
   for S in $SEQUENCES; do
     (
     cd "$S" || exit
@@ -81,6 +81,7 @@ clean(){
 
 finalize(){
   # copy results on backup dir
+  mkdir -p "${ROOT}/results"
   cp "$RESULTS" "${ROOT}/results/results_$(date +%F_%H.%M.%S).csv"
 }
 
@@ -203,8 +204,8 @@ launch_bcalm(){
     -in "${infile}" -out "${outfile_base}"
     # give better filename
     mv "$outfile" "$outfile_better_name"
-    local outfile=$outfile_better_name
   fi
+  local outfile=$outfile_better_name
 
   write_to_csv "${outfile}"
   compress_all_and_write_csv "${outfile}"
@@ -313,7 +314,7 @@ launch_metagraph_count(){
     --parallel "${NTHREAD}" --infile-base "${graph}" --outfile-base "${outfile_base}" "${outfile_base}.row_diff_int_brwt.annodbg"
 
     # clean temp files
-    rm -rf swap *.pred *.pred_boundary *.rd_succ *.succ *.succ_boundary *.linkage *.row_count *.row_reduction *.anchors
+    rm -rf swap ./*.pred ./*.pred_boundary ./*.rd_succ ./*.succ ./*.succ_boundary ./*.linkage ./*.row_count ./*.row_reduction ./*.anchors
   fi
 
   write_to_csv "${graph}"
@@ -419,7 +420,7 @@ download_and_launch(){
 }
 
 setup
-if [ $CLEAN ]; then clean; fi
+if $CLEAN; then clean; fi
 download_and_launch
 finalize
 
