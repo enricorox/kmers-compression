@@ -1,9 +1,10 @@
 #!/bin/bash
 
 setup(){
-  DEBUG=true
-  PLOT=false
+  DEBUG=false
   CLEAN=false
+  PLOT=false
+  SHUTDOWN=false
 
   # ---- add binaries to PATH ----
   # sra-toolkit
@@ -157,8 +158,8 @@ launch_prophasm(){
   local root_dir=$method
   local counts="no-counts"
   local infile="../${S}.fasta"
-  local outfile="${S}.pro.k${K}.fasta"
-  local outfile_stat="${S}.pro.k${K}.stat"
+  local outfile="${S}.${method}.k${K}.fasta"
+  local outfile_stat="${S}.${method}.k${K}.stat"
 
   echo "*** Launching prophasm ($counts) with accession ${S} and k=${K}"
   mkdir -p $root_dir
@@ -345,7 +346,7 @@ launch_metagraph_assemble(){
     local counts="no-counts"
   fi
 
-  echo "*** Launching metagraph assemble (${counts}) with accession ${1} and k=${K}"
+  echo "*** Launching metagraph assemble (${counts}) with accession ${S} and k=${K}"
 
   mkdir -p $root_dir
   (
@@ -430,7 +431,7 @@ if $PLOT; then
   ./plot.py "$RESULTS"
 fi
 
-if ! $DEBUG; then
+if ! $SHUTDOWN; then
   # power off the computer
   shutdown -h +3
 fi
