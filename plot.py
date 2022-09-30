@@ -8,7 +8,7 @@ DEFAULT_RESULTS = "results.csv"
 SEQUENCES_FILE = "sequences-test.txt"
 # methods: output_list
 METHODS = {"bcalm": ["fasta"], "prophasm": ["fasta"], "ust": ["fasta", "counts"],
-           "metagraph": ["dbg", "annodbg", "coords"], "assembly": ["fasta", "kmer_counts"]}
+           "metagraph": ["dbg", "annodbg", "counts"], "assembly": ["fasta", "kmer_counts"]}
 NO_COUNTS_METHOD = ["prophasm"]
 FIGURES_PATH = "figures"
 
@@ -59,7 +59,7 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
                 f'sequence == "{sequence}" and counts == "{counts_name}" and kmer_size == {kmer_size}'
             )
 
-            avg_seq_size += seq_df.query('method == "none"')['size'].iloc[0] / len(sequences)
+            avg_seq_size += data.query(f'sequence == "{sequence}" and method == "none"')['size'].iloc[0] / len(sequences)
 
             # for each method find
             # - the size
