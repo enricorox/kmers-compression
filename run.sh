@@ -431,7 +431,7 @@ if $PLOT; then
   ./plot.py "$RESULTS"
 fi
 
-if ! $SHUTDOWN; then
+if $SHUTDOWN; then
   # power off the computer
   shutdown -h +3
 fi

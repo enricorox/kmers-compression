@@ -1,12 +1,14 @@
+# ----- Bad ones -----
 # Human genome
 # too heavy: Not enough memory to process SRR341725.met.k31.column.annodbg, requires 3051.387546 MB, skipped
 # SRR341725
 # zebrafish (too heavy)
 # SRR5853087
 
+# ----- Good ones -----
+# human hapmap
 SRR000001
-
-# E. coli
+# E. Coli
 SRR21394969
 # Coronavirus 2
 SRR21394970
