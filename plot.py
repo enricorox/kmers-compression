@@ -18,6 +18,7 @@ def read_from_file(myfile):
     with open(myfile, "r") as file:
         for line in file:
             sequence = line.strip()
+            # skip white lines or comments
             if sequence == "" or sequence[0] == "#":
                 continue
             seq.append(sequence)
@@ -36,22 +37,26 @@ def addlabels1(x, y):
         plt.text(i, y[i], f"{y[i]:.2}", ha='center', va='bottom', color='green')
 
 
-def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
+def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False):
     if counts:
         counts_name = "counts"
         methods = [e for e in list(METHODS) if e not in NO_COUNTS_METHOD]
     else:
         counts_name = "no-counts"
         methods = list(METHODS)
+    seq_sizes = [data.query(f'sequence == "{sequence}" and method == "none"')['size'].iloc[0] for sequence in sequences]
+    seq_sizes = dict(zip(sequences, seq_sizes))
     print(counts_name)
     all_sizes = {}
     for kmer_size in kmer_sizes:
         all_sequences = {}
         print(f"\tkmer-size: {kmer_size}")
         avg_ratios = [0 for i in range(len(methods))]
+        avg_ratios_ = [0 for i in range(len(methods))]
         avg_size = [0 for i in range(len(methods))]
+        avg_size_ = [0 for i in range(len(methods))]
+        # average compressed size
         avg_comp = [0 for i in range(len(methods))]
-        avg_seq_size = 0
         for sequence in sequences:
             print(f"\t\tsequence: {sequence}")
             # select sequence and kmer-size
@@ -59,18 +64,16 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
                 f'sequence == "{sequence}" and counts == "{counts_name}" and kmer_size == {kmer_size}'
             )
 
-            avg_seq_size += data.query(f'sequence == "{sequence}" and method == "none"')['size'].iloc[0] / len(sequences)
-
             # for each method find
             # - the size
             # - best compressed size and tool
-            no_compression_size = []
-            best_compression_size = []
+            no_compression_sizes = []
+            best_compression_sizes = []
             # best_compression_tool = []
             for i, method in enumerate(methods):
                 # sum all sizes of uncompressed files for this method
                 size = seq_df.query(f'method == "{method}" and compression == "none"')['size'].sum()
-                no_compression_size.append(size)
+                no_compression_sizes.append(size)
 
                 # find the best compression size
                 comp_size = 0
@@ -81,32 +84,36 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
                     # only one file if no counts
                     if not counts:
                         break
-                best_compression_size.append(comp_size)
+                best_compression_sizes.append(comp_size)
 
                 # find the best compression tool
                 # idx = q['size'].idxmin()
                 # best_compression_tool.append(data['compression'].iloc[idx])
 
                 avg_ratios[i] += (size / comp_size) / len(sequences)
+                avg_ratios_[i] += (seq_sizes[sequence] / comp_size) / len(sequences)
                 avg_size[i] += size / len(sequences)
                 avg_comp[i] += comp_size / len(sequences)
 
             # methods results
-            print(f"\t\t\tuncompressed: {no_compression_size}")
-            print(f"\t\t\tcompressed: {best_compression_size}")
+            print(f"\t\t\tstarting size: {seq_sizes[sequence]}")
+            print(f"\t\t\tuncompressed: {no_compression_sizes}")
+            print(f"\t\t\tcompressed: {best_compression_sizes}")
+            print(f"\t\t\tratio1: {[seq_sizes[sequence]/no_compression_size for no_compression_size in no_compression_sizes]}")
+            print(f"\t\t\tratio2: {[seq_sizes[sequence]/best_compression_size for best_compression_size in best_compression_sizes]}")
 
             # plot methods vs sizes
             plt.title(f"{sequence} - {counts_name} - k={kmer_size}")
             plt.xlabel("methods")
             plt.ylabel("sizes [bytes]")
-            plt.bar(methods, no_compression_size)
-            plt.bar(methods, best_compression_size)
-            addlabels2(methods, no_compression_size, best_compression_size)
+            plt.bar(methods, no_compression_sizes)
+            plt.bar(methods, best_compression_sizes)
+            addlabels2(methods, no_compression_sizes, best_compression_sizes)
             plt.savefig(f"{FIGURES_PATH}/{sequence}.{counts_name}.k{kmer_size}.png")
             plt.clf()
 
             # save sizes
-            all_sequences.update({sequence: [no_compression_size, best_compression_size]})
+            all_sequences.update({sequence: [no_compression_sizes, best_compression_sizes]})
 
         # plot average ratios
         plt.title(f"average - {counts_name} - k={kmer_size}")
@@ -120,9 +127,9 @@ def plot(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts: bool):
         # plot average ratios
         plt.title(f"average - {counts_name} - k={kmer_size}")
         plt.xlabel("methods")
-        plt.ylabel("size ratios")
-        plt.bar(methods, avg_ratios)
-        addlabels1(methods, avg_ratios)
+        plt.ylabel("compression ratios")
+        plt.bar(methods, avg_ratios_)
+        addlabels1(methods, avg_ratios_)
         plt.savefig(f"{FIGURES_PATH}/average-ratios.{counts_name}.k{kmer_size}.png")
         plt.clf()
 
@@ -160,9 +167,9 @@ def main():
     kmer_sizes = read_from_file(kmer_sizes_file)
 
     # no-counts
-    plot(sequences, kmer_sizes, data, False)
+    analyze(sequences, kmer_sizes, data, counts=False)
     # counts
-    plot(sequences, kmer_sizes, data, True)
+    analyze(sequences, kmer_sizes, data, counts=True)
 
 
 if __name__ == "__main__":
