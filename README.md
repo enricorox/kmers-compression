@@ -8,6 +8,8 @@ that encode sequences of nucleotides of length k (a parameter to set).
 This is a bash script that automates boring stuff like setting 
 parameters and execute many programs.
 
+`main.cpp` is a random FASTA file generator.
+
 ## Setup
 This script suppose to have all the binaries needed in 
 `${HOME}/bio-bin/` or in your `$PATH` anyway.
