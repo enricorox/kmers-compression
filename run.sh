@@ -3,7 +3,7 @@
 setup(){
   DEBUG=false
   CLEAN=false
-  PLOT=false
+  PLOT=true
   SHUTDOWN=false
 
   # ---- add binaries to PATH ----
@@ -39,6 +39,12 @@ setup(){
 
   # numbers of threads
   NTHREAD=4
+
+  # maximum size to consider: 10GB
+  MAXSIZE=10000000000
+
+  # size error
+  E_SIZE=-1
 
   # k-mer size (separated by spaces)
   KMER_SIZES=$(grep -vE "#" kmer-sizes.txt) # escape comments
@@ -94,10 +100,19 @@ error(){
 compress_and_write_csv(){
   local uncompressed=$1
   local compressor=$2
+  local compressed="${uncompressed}.${compressor}"
+
+  # shellcheck disable=SC2155
+  local size=$(stat -c %s "${uncompressed}")
+  # write -1 if file > 10GB (too big for compression!)
+  if [ "$size" -gt "$MAXSIZE" ]; then
+    write_to_csv "${compressed}" "${compressor:-"none"}" "${uncompressed##*.}" $E_SIZE
+    return
+  fi
 
   echo -n "** Compressing ${uncompressed} with "
   case ${compressor} in
-  "mfcompress")
+  "mfc")
     echo "MFCompressC..."
     # check mimetype and first character
     if [[ $(mimetype -b "${uncompressed}") != "text/plain" || $(head -c 1 -z "${uncompressed}") != ">" ]]; then
@@ -105,30 +120,26 @@ compress_and_write_csv(){
       return
     fi
 
-    local compressed="${uncompressed}.mfc"
     [[ -f $compressed ]] || MFCompressC -t $NTHREAD -3 -o "${compressed}" "${uncompressed}"
     ;;
   "lzma")
     echo "lzma..."
-    local compressed="${uncompressed}.lzma"
     [[ -f $compressed ]] || lzma --force --best --keep "${uncompressed}"
     ;;
-  "gzip")
+  "gz")
     echo "gzip..."
-    local compressed="${uncompressed}.gz"
     [[ -f $compressed ]] || gzip --force --keep --best "${uncompressed}"
     ;;
   *)
     error "compressor not found"
   esac
 
-  write_to_csv "${compressed}" "${compressor:-"gzip"}" "${uncompressed##*.}"
+  write_to_csv "${compressed}" "${compressor:-"none"}" "${uncompressed##*.}"
 }
 
 write_to_csv(){
   # find file size
-  # shellcheck disable=SC2155
-  local size=$(stat -c %s "${1}")
+  local size=${4:-$(stat -c %s "${1}")}
   # compression type if given otherwise none
   local compression=${2:-"none"}
   # filetype if given otherwise found it
@@ -138,7 +149,7 @@ write_to_csv(){
 }
 
 compress_all_and_write_csv(){
-  tools="mfcompress lzma gzip"
+  tools="mfc lzma gz"
   for t in $tools; do
     compress_and_write_csv "${1}" "${t}"
   done
@@ -147,10 +158,12 @@ compress_all_and_write_csv(){
 write_starting_size(){
   local method="none"
   local counts="none"
-  local K="0"
   local filetype="fasta"
   local compression="none"
-  write_to_csv "${S}.fasta"
+  for K in $KMER_SIZES; do
+    write_to_csv "${S}.fasta"
+    compress_all_and_write_csv "${S}.fasta"
+  done
 }
 
 launch_prophasm(){
@@ -238,6 +251,19 @@ launch_ust(){
 
   # if there is no old file
   if [[ ! -f $outfile_better_name ]]; then
+    # shellcheck disable=SC2155
+    local size=$(stat -c %s "${infile}")
+    # write -1 if file > 10GB (too big for compression!)
+    if [ "$size" -gt "$MAXSIZE" ]; then
+      write_to_csv "${outfile_better_name}" "none" "${outfile_better_name##*.}" $E_SIZE
+      [[ ${counts_param} == "0" ]] || \
+      write_to_csv "${outfile_better_name_counts}" "none" "${outfile_better_name_counts##*.}" $E_SIZE
+
+      compress_all_and_write_csv "${outfile_better_name}"
+      [[ ${counts_param} == "0" ]] || compress_all_and_write_csv "${outfile_better_name_counts}"
+      return
+    fi
+
     ust -k "${K}" -i "${infile}" -a ${counts_param}
 
     # give better names to output files
@@ -332,8 +358,8 @@ launch_metagraph_count(){
 
 # launch metagraph_count before this!
 launch_metagraph_assemble(){
-  local method="assembly";
-  local root_dir=$method
+  local method="contigs";
+  local root_dir="assembly"
   local metagraph_contigs="../metagraph-k${K}/${S}.metagraph.k${K}.contigs.fasta.gz"
   local metagraph_counts="../metagraph-k${K}/${S}.metagraph.k${K}.contigs.kmer_counts.gz"
   local outfile_base="${S}.assembled.k${K}"
@@ -346,7 +372,7 @@ launch_metagraph_assemble(){
     local counts="no-counts"
   fi
 
-  echo "*** Launching metagraph assemble (${counts}) with accession ${S} and k=${K}"
+  echo "*** Launching metagraph $method (${counts}) with accession ${S} and k=${K}"
 
   mkdir -p $root_dir
   (
@@ -427,8 +453,8 @@ finalize
 
 if $PLOT; then
   # plot
-  source venv/bin/activate
-  ./plot.py "$RESULTS"
+  source "$ROOT"/venv/bin/activate
+  "$ROOT"/plot.py "$RESULTS"
 fi
 
 if $SHUTDOWN; then

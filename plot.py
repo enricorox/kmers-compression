@@ -4,11 +4,12 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# DEFAULT_RESULTS = "results/results_2022-10-04_14.41.16.csv"
 DEFAULT_RESULTS = "results.csv"
 SEQUENCES_FILE = "sequences-test.txt"
 # methods: output_list
-METHODS = {"bcalm": ["fasta"], "prophasm": ["fasta"], "ust": ["fasta", "counts"],
-           "metagraph": ["dbg", "annodbg", "counts"], "assembly": ["fasta", "kmer_counts"]}
+METHODS = {"none": ["fasta"], "bcalm": ["fasta"], "prophasm": ["fasta"], "ust": ["fasta", "counts"],
+           "metagraph": ["dbg", "annodbg", "counts"], "contigs": ["fasta", "kmer_counts"]}
 NO_COUNTS_METHOD = ["prophasm"]
 FIGURES_PATH = "figures"
 
@@ -28,8 +29,8 @@ def read_from_file(myfile):
 # function to add value labels
 def addlabels2(x, y1, y2):
     for i in range(len(x)):
-        plt.text(i, y1[i], f"{y1[i]*1.0:.2}", ha='center', va='bottom', color='green')
-        plt.text(i, y2[i], f"{y2[i]*1.0:.2}", ha='center', va='top', color='green')
+        plt.text(i, y1[i], f"{y1[i] * 1.0:.2}", ha='center', va='bottom', color='green')
+        plt.text(i, y2[i], f"{y2[i] * 1.0:.2}", ha='center', va='top', color='green')
 
 
 def addlabels1(x, y):
@@ -40,11 +41,15 @@ def addlabels1(x, y):
 def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False):
     if counts:
         counts_name = "counts"
+        inv_counts_name = "no-counts"
         methods = [e for e in list(METHODS) if e not in NO_COUNTS_METHOD]
     else:
         counts_name = "no-counts"
+        inv_counts_name = "counts"
         methods = list(METHODS)
-    seq_sizes = [data.query(f'sequence == "{sequence}" and method == "none"')['size'].iloc[0] for sequence in sequences]
+    seq_sizes = \
+        [data.query(f'sequence == "{sequence}" and method == "none" and compression == "none"')['size'].iloc[0]
+         for sequence in sequences]
     seq_sizes = dict(zip(sequences, seq_sizes))
     print(counts_name)
     all_sizes = {}
@@ -61,7 +66,7 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
             print(f"\t\tsequence: {sequence}")
             # select sequence and kmer-size
             seq_df = data.query(
-                f'sequence == "{sequence}" and counts == "{counts_name}" and kmer_size == {kmer_size}'
+                f'sequence == "{sequence}" and counts != "{inv_counts_name}" and kmer_size == {kmer_size}'
             )
 
             # for each method find
@@ -88,7 +93,8 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
 
                 # find the best compression tool
                 # idx = q['size'].idxmin()
-                # best_compression_tool.append(data['compression'].iloc[idx])
+                # compression = data['compression'].iloc[idx]
+                # best_compression_tool.append(compression)
 
                 avg_ratios[i] += (size / comp_size) / len(sequences)
                 avg_ratios_[i] += (seq_sizes[sequence] / comp_size) / len(sequences)
@@ -99,8 +105,10 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
             print(f"\t\t\tstarting size: {seq_sizes[sequence]}")
             print(f"\t\t\tuncompressed: {no_compression_sizes}")
             print(f"\t\t\tcompressed: {best_compression_sizes}")
-            print(f"\t\t\tratio1: {[seq_sizes[sequence]/no_compression_size for no_compression_size in no_compression_sizes]}")
-            print(f"\t\t\tratio2: {[seq_sizes[sequence]/best_compression_size for best_compression_size in best_compression_sizes]}")
+            print(
+                f"\t\t\tratio1: {[seq_sizes[sequence] / no_compression_size for no_compression_size in no_compression_sizes]}")
+            print(
+                f"\t\t\tratio2: {[seq_sizes[sequence] / best_compression_size for best_compression_size in best_compression_sizes]}")
 
             # plot methods vs sizes
             plt.title(f"{sequence} - {counts_name} - k={kmer_size}")
