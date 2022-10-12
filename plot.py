@@ -51,8 +51,10 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
         [data.query(f'sequence == "{sequence}" and method == "none" and compression == "none"')['size'].iloc[0]
          for sequence in sequences]
     seq_sizes = dict(zip(sequences, seq_sizes))
+
     print(counts_name)
     all_sizes = {}
+    compression_stat = {}
     for kmer_size in kmer_sizes:
         all_sequences = {}
         print(f"\tkmer-size: {kmer_size}")
@@ -86,15 +88,17 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
                 for file_type in METHODS.get(method):
                     q = seq_df.query(f'method == "{method}" and compression != "none" and file_type == "{file_type}"')
                     comp_size += q['size'].min()
+
+                    # find the best compression tool
+                    idx = q['size'].idxmin()
+                    compression = data['compression'].iloc[idx]
+                    compression_stat.update({compression: 1 + compression_stat.get(compression, 0)})
+
                     # only one file if no counts
                     if not counts:
                         break
-                best_compression_sizes.append(comp_size)
 
-                # find the best compression tool
-                # idx = q['size'].idxmin()
-                # compression = data['compression'].iloc[idx]
-                # best_compression_tool.append(compression)
+                best_compression_sizes.append(comp_size)
 
                 avg_ratios[i] += (size / comp_size) / len(sequences)
                 avg_ratios_[i] += (seq_sizes[sequence] / comp_size) / len(sequences)
@@ -152,6 +156,7 @@ def analyze(sequences: list, kmer_sizes: list, data: pd.DataFrame, counts=False)
         plt.clf()
 
         all_sizes.update({kmer_size: all_sequences})
+    print(compression_stat)
     return all_sizes
 
 
